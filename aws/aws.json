@@ -1,0 +1,41 @@
+{
+  "variables": {
+    "source_ami": "",
+    "success_file": ""
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "region": "eu-west-1",
+      "source_ami": "{{user `source_ami`}}",
+      "instance_type": "t3.micro",
+      "ssh_username": "ec2-user",
+      "ami_name": "falco-ebpf-probe-{{user `source_ami`}}-{{isotime \"20060102\"}}",
+      "run_tags": {
+          "Name": "packer-falco-ebpf-probe-{{user `source_ami`}}-{{isotime \"20060102\"}}"
+      }
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "environment_vars": ["SOURCE_IMAGE={{user `source_ami`}}"],
+      "script": "//scripts:falco-driver-installer-docker",
+      "execute_command": "export dest=\"/var/lib/cloud/$(basename {{ .Path }})\"; echo 'packer' | sudo -S sh -c \"cp {{ .Path }} $dest\"; echo 'packer' | sudo -S sh -c \"chmod +x $dest\"; echo 'packer' | sudo -S sh -c \"{{ .Vars }} $dest\""
+    },
+    {
+      "type": "shell-local",
+      "inline": ["mkdir -p plz-out/falco/aws/{{user `source_ami`}}"]
+    },
+    {
+      "type": "file",
+      "direction": "download",
+      "source": "/tmp/{{user `source_ami`}}/",
+      "destination": "plz-out/falco/aws/"
+    },
+    {
+      "type": "shell-local",
+      "inline": ["touch {{ user `success_file` }}; echo \"success!\"; exit 1"]
+    }
+  ]
+}

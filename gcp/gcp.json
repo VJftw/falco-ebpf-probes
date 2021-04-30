@@ -1,0 +1,49 @@
+{
+  "variables": {
+    "gcp_project_id": "",
+    "source_image": "",
+    "success_file": ""
+  },
+  "builders": [
+    {
+      "type": "googlecompute",
+      "project_id": "{{user `gcp_project_id`}}",
+      "machine_type": "n2-standard-2",
+      "ssh_username": "packer",
+      "source_image": "{{user `source_image`}}",
+      "image_name": "falco-ebpf-probe-{{user `source_image`}}-{{isotime \"20060102\"}}",
+      "instance_name": "packer-falco-ebpf-probe-{{user `source_image`}}-{{isotime \"20060102\"}}",
+      "zone": "europe-west2-a",
+      "disk_type": "pd-ssd",
+      "disable_default_service_account": true,
+      "metadata": {
+        "enable-oslogin": "false"
+      },
+      "preemptible": true
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "environment_vars": [
+        "SOURCE_IMAGE={{user `source_image`}}"
+      ],
+      "script": "//scripts:falco-driver-installer-docker",
+      "execute_command": "export dest=\"/var/lib/cloud/$(basename {{ .Path }})\"; echo 'packer' | sudo -S sh -c \"cp {{ .Path }} $dest\"; echo 'packer' | sudo -S sh -c \"chmod +x $dest\"; echo 'packer' | sudo -S sh -c \"{{ .Vars }} $dest\""
+    },
+    {
+      "type": "shell-local",
+      "inline": ["mkdir -p plz-out/falco/gcp/{{user `source_image`}}"]
+    },
+    {
+      "type": "file",
+      "direction": "download",
+      "source": "/tmp/{{user `source_image`}}/",
+      "destination": "plz-out/falco/gcp/"
+    },
+    {
+      "type": "shell-local",
+      "inline": ["touch {{ user `success_file` }}; echo \"success!\"; exit 1"]
+    }
+  ]
+}
