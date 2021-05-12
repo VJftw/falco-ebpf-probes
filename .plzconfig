@@ -5,5 +5,12 @@
 ;
 ; Or you can uncomment the following to pin everyone to a particular version;
 ; when you change it all users will automatically get updated.
-; [please]
-; version = 16.0.0
+[please]
+version = 16.0.0
+
+[buildconfig]
+; buildah
+buildah-policy = //third_party/buildah:policy
+buildah-registries = //third_party/buildah:registries
+;buildah-tool = //third_party/buildah:buildah
+default-docker-repo = example.org

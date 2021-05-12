@@ -1,0 +1,33 @@
+on: ["push"]
+jobs:
+  generate_target_versions_json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      # generate list of plz targets and args for all probe build targets 
+      - run: "./pleasew run //build/github:generate_targets_json"
+            
+      # here we create the json, we need the "id:" so we can use it in "outputs" bellow
+      - id: set-matrix
+        #  echo "::set-output name=matrix::$(packages/monorepo-builder/bin/monorepo-builder packages-json --exclude-package easy-coding-standard)"
+        run: echo "::set-output name=matrix::$(<plz-out/github/targets/all.json)"
+
+    # here, we save the result of this 1st phase to the "outputs"
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+
+  build_probes:
+  # this means, wait for the "provide_packages_json" phase 1 to finish
+    needs: generate_target_versions_json
+
+    runs-on: ubuntu-latest
+    strategy:
+      # ↓ the real magic happens here - create dynamic matrix from the json
+      matrix:
+        target_version: ${{ fromJson(needs.generate_target_versions_json.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v2
+      # load falco-driver-compiler image
+      - run: "./pleasew run //falco:driver-compiler_load"
+      - run: "./pleasew run //build/github:publish_target -- \"${{ matrix.target_version }}\""

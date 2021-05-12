@@ -1,0 +1,65 @@
+CONTAINER_RUNTIME_BINARY = "docker"
+
+def falco_ebpf_container_build(
+    name: str,
+    fetch_sources_script: str,
+    fetch_sources_container: str,
+    labels: list = [],
+):
+    group = name
+    sources = genrule(
+        name = f"_{name}#sources",
+        outs = [f"_{name}#sources"],
+        cmd = "mkdir $OUTS",
+    )
+
+    fetch_sources=sh_cmd(
+        name = f"_{name}_#fetch-sources",
+        data = [sources, fetch_sources_script, f"{fetch_sources_container}_load", f"{fetch_sources_container}_fqn"],
+        cmd = f"""
+$(out_location {fetch_sources_container}_load)
+image=\\\$(<$(out_location {fetch_sources_container}_fqn))
+{CONTAINER_RUNTIME_BINARY} run --rm \\
+    -e OUT=$(out_location {sources}) \\
+    -e VERSION=\\\$VERSION \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/etc/:/host/etc" \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/lib/modules:/host/lib/modules" \\
+    -v "\\\$PWD/$(out_location {fetch_sources_script}):/$(basename $(out_location {fetch_sources_script}))" \\
+    --entrypoint="/$(basename $(out_location {fetch_sources_script}))" \\
+    \\\$image \\\$@
+{CONTAINER_RUNTIME_BINARY} run --rm \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/etc/:/host/etc" \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/lib/modules:/host/lib/modules" \\
+    alpine:latest sh -c "chown -R \\\$(id -u):\\\$(id -g) /host"
+        """,
+        shell = "/bin/bash",
+    )
+
+    sh_cmd(
+        name = f"{name}_build_ebpf_probe",
+        data = [
+            "//build/defs:build-falco-ebpf-probe",
+            sources,
+            fetch_sources, 
+            "//falco:driver-compiler_fqn",
+            "//falco:probes",
+        ],
+        labels = labels,
+        cmd = f"""
+export VERSION="\\\$1"
+
+$(out_location {fetch_sources})
+image=\\\$(<$(out_location //falco:driver-compiler_fqn))
+{CONTAINER_RUNTIME_BINARY} run --rm \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/etc/:/host/etc" \\
+    -v "\\\$PWD/$(out_location {sources})/\\\${{VERSION}}/host/lib/modules:/host/lib/modules" \\
+    -v "\\\$PWD/$(out_location //falco:probes):/tmp/falco/probes" \\
+    -v "\\\$PWD/$(out_location //build/defs:build-falco-ebpf-probe):/$(basename $(out_location //build/defs:build-falco-ebpf-probe))" \\
+    --entrypoint="/$(basename $(out_location //build/defs:build-falco-ebpf-probe))" \\
+    \\\$image
+{CONTAINER_RUNTIME_BINARY} run --rm \\
+    -v "\\\$PWD/$(out_location //falco:probes):/tmp/falco/probes" \\
+    alpine:latest sh -c "chown -R \\\$(id -u):\\\$(id -g) /tmp/falco/probes"
+        """,
+        shell = "/bin/bash",
+    )
